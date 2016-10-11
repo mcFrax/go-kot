@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"image/color"
+	"math/rand"
 
 	"engo.io/ecs"
 	"engo.io/engo"
@@ -11,26 +12,31 @@ import (
 
 const (
 	teksturaKotaScratcha = "scratch_cat.png"
+	teksturaKotaScratchaMrug = "scratch_cat_blink.png"
 	teksturaInnegoKota = "cartoon-cat-free.png"
 	przyspieszenieZiemskie = 10000
+	czasMrugnięcia = 0.05
+	bazaOkresuMrugnięcia = 3.0
+	losowyCzasDoMrugnięcia = 5.0
+	szansaPodwójnegoMrugnięcia = 0.2
 )
 
-type kociSystem struct {
+type systemObsługiKota struct {
 	świat *ecs.World
 	kot
 }
 
-func (ks *kociSystem) New(świat *ecs.World) {
-	ks.świat = świat
+func (sok *systemObsługiKota) New(świat *ecs.World) {
+	sok.świat = świat
 
-	ks.stwórzKota()
+	sok.stwórzKota()
 	
-	ks.zarejestrujKlawisze()
+	sok.zarejestrujKlawisze()
 }
 
-func (ks *kociSystem) stwórzKota() {
-	ks.kot.BasicEntity = ecs.NewBasic()
-	ks.kot.SpaceComponent = common.SpaceComponent{
+func (sok *systemObsługiKota) stwórzKota() {
+	sok.kot.BasicEntity = ecs.NewBasic()
+	sok.kot.SpaceComponent = common.SpaceComponent{
 		Position: engo.Point{0, 670},
 		Width:    128,
 		Height:   128,
@@ -40,21 +46,28 @@ func (ks *kociSystem) stwórzKota() {
 	if błąd != nil {
 		log.Println("Nie udało się załadować tekstury: " + błąd.Error())
 	}
+	sok.kot.tekstura = tekstura
 
-	ks.kot.RenderComponent = common.RenderComponent{
-		Drawable: tekstura,
+	tekstura, błąd = common.LoadedSprite(teksturaKotaScratchaMrug)
+	if błąd != nil {
+		log.Println("Nie udało się załadować tekstury: " + błąd.Error())
+	}
+	sok.kot.teksturaMrug = tekstura
+
+	sok.kot.RenderComponent = common.RenderComponent{
+		Drawable: sok.kot.tekstura,
 		Scale:    engo.Point{1, 1},
 	}
 
-	for _, system := range ks.świat.Systems() {
+	for _, system := range sok.świat.Systems() {
 		switch sys := system.(type) {
 		case *common.RenderSystem:
-			sys.Add(&ks.kot.BasicEntity, &ks.kot.RenderComponent, &ks.kot.SpaceComponent)
+			sys.Add(&sok.kot.BasicEntity, &sok.kot.RenderComponent, &sok.kot.SpaceComponent)
 		}
 	}
 }
 
-func (ks *kociSystem) zarejestrujKlawisze() {
+func (sok *systemObsługiKota) zarejestrujKlawisze() {
 	engo.Input.RegisterButton("lewo", engo.ArrowLeft)
 	engo.Input.RegisterButton("prawo", engo.ArrowRight)
 	engo.Input.RegisterButton("góra", engo.ArrowUp)
@@ -62,19 +75,19 @@ func (ks *kociSystem) zarejestrujKlawisze() {
 	engo.Input.RegisterButton("spacja", engo.Space)
 }
 
-func (ks *kociSystem) Update(dt float32) {
+func (sok *systemObsługiKota) Update(dt float32) {
 	lewo := engo.Input.Button("lewo")
 	prawo := engo.Input.Button("prawo")
 	spacja := engo.Input.Button("spacja")
 
-	staryX := ks.kot.SpaceComponent.Position.X
-	staryY := ks.kot.SpaceComponent.Position.Y
+	staryX := sok.kot.SpaceComponent.Position.X
+	staryY := sok.kot.SpaceComponent.Position.Y
 	nowyX := staryX
 	nowyY := staryY
 
-	ks.kot.stoi = false
-	nowyY += dt * (ks.kot.szybkośćY + (dt * przyspieszenieZiemskie / 2))
-	ks.kot.szybkośćY += dt * przyspieszenieZiemskie
+	sok.kot.stoi = false
+	nowyY += dt * (sok.kot.szybkośćY + (dt * przyspieszenieZiemskie / 2))
+	sok.kot.szybkośćY += dt * przyspieszenieZiemskie
 
 	if lewo.Down() && !prawo.Down() {
 		nowyX -= dt * 500
@@ -83,25 +96,49 @@ func (ks *kociSystem) Update(dt float32) {
 		nowyX += dt * 500
 	}
 
+	// Czy kot stoi na podłodze?
 	if nowyY >= 670 && staryY <= 670 {
 		nowyY = 670
-		ks.kot.stoi = true
+		sok.kot.stoi = true
 	}
 
-	if spacja.Down() && ks.kot.stoi {
-		ks.kot.szybkośćY = -2500
+	if spacja.Down() && sok.kot.stoi {
+		sok.kot.szybkośćY = -2500
 	}
 
-	ks.kot.SpaceComponent.Position.X = nowyX
-	ks.kot.SpaceComponent.Position.Y = nowyY
+	sok.kot.SpaceComponent.Position.X = nowyX
+	sok.kot.SpaceComponent.Position.Y = nowyY
+
+	sok.kot.doKońcaMrugnięcia -= dt
+	sok.kot.doNastępnegoMrugnięcia -= dt
+	switch {
+		case sok.kot.doNastępnegoMrugnięcia <= 0 : {
+			sok.kot.RenderComponent.Drawable = sok.kot.teksturaMrug
+			sok.kot.doKońcaMrugnięcia = czasMrugnięcia
+			sok.zaplanujMrugnięcie()
+		}
+		case sok.kot.doKońcaMrugnięcia <= 0 : {
+			sok.kot.RenderComponent.Drawable = sok.kot.tekstura
+		}
+	}
 }
 
-func (ks *kociSystem) Remove(usunięty ecs.BasicEntity) {
-	if usunięty == ks.kot.BasicEntity {
+func (sok *systemObsługiKota) zaplanujMrugnięcie() {
+	if !sok.kot.podwójneMrugnięcie && rand.Float32() < szansaPodwójnegoMrugnięcia {
+		sok.kot.doNastępnegoMrugnięcia = 2 * czasMrugnięcia
+		sok.kot.podwójneMrugnięcie = true
+	} else {
+		sok.kot.doNastępnegoMrugnięcia = czasMrugnięcia + rand.Float32() * bazaOkresuMrugnięcia
+		sok.kot.doNastępnegoMrugnięcia += rand.Float32() * losowyCzasDoMrugnięcia
+		sok.kot.podwójneMrugnięcie = false
+	}
+}
+
+func (sok *systemObsługiKota) Remove(usunięty ecs.BasicEntity) {
+	if usunięty == sok.kot.BasicEntity {
 		panic("Usunięto kota!")
 	}
 }
-
 
 type kot struct {
 	ecs.BasicEntity
@@ -109,6 +146,11 @@ type kot struct {
 	common.SpaceComponent
 	szybkośćY float32
 	stoi bool
+	tekstura common.Drawable
+	teksturaMrug common.Drawable
+	doNastępnegoMrugnięcia float32
+	doKońcaMrugnięcia float32
+	podwójneMrugnięcie bool
 }
 
 
@@ -117,7 +159,7 @@ type kociaScena struct{}
 func (*kociaScena) Type() string { return "kociaScena" }
 
 func (*kociaScena) Preload() {
-	engo.Files.Load(teksturaKotaScratcha, teksturaInnegoKota)
+	engo.Files.Load(teksturaKotaScratcha, teksturaKotaScratchaMrug, teksturaInnegoKota)
 }
 
 func (*kociaScena) Setup(świat *ecs.World) {
@@ -125,7 +167,7 @@ func (*kociaScena) Setup(świat *ecs.World) {
 
 	świat.AddSystem(&common.RenderSystem{})
 
-	świat.AddSystem(&kociSystem{})
+	świat.AddSystem(&systemObsługiKota{})
 }
 
 func main() {
