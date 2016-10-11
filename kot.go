@@ -15,22 +15,22 @@ const (
 	przyspieszenieZiemskie = 10000
 )
 
-type kociSystem struct {
+type systemObsługiKota struct {
 	świat *ecs.World
 	kot
 }
 
-func (ks *kociSystem) New(świat *ecs.World) {
-	ks.świat = świat
+func (sok *systemObsługiKota) New(świat *ecs.World) {
+	sok.świat = świat
 
-	ks.stwórzKota()
+	sok.stwórzKota()
 	
-	ks.zarejestrujKlawisze()
+	sok.zarejestrujKlawisze()
 }
 
-func (ks *kociSystem) stwórzKota() {
-	ks.kot.BasicEntity = ecs.NewBasic()
-	ks.kot.SpaceComponent = common.SpaceComponent{
+func (sok *systemObsługiKota) stwórzKota() {
+	sok.kot.BasicEntity = ecs.NewBasic()
+	sok.kot.SpaceComponent = common.SpaceComponent{
 		Position: engo.Point{0, 670},
 		Width:    128,
 		Height:   128,
@@ -41,20 +41,20 @@ func (ks *kociSystem) stwórzKota() {
 		log.Println("Nie udało się załadować tekstury: " + błąd.Error())
 	}
 
-	ks.kot.RenderComponent = common.RenderComponent{
+	sok.kot.RenderComponent = common.RenderComponent{
 		Drawable: tekstura,
 		Scale:    engo.Point{1, 1},
 	}
 
-	for _, system := range ks.świat.Systems() {
+	for _, system := range sok.świat.Systems() {
 		switch sys := system.(type) {
 		case *common.RenderSystem:
-			sys.Add(&ks.kot.BasicEntity, &ks.kot.RenderComponent, &ks.kot.SpaceComponent)
+			sys.Add(&sok.kot.BasicEntity, &sok.kot.RenderComponent, &sok.kot.SpaceComponent)
 		}
 	}
 }
 
-func (ks *kociSystem) zarejestrujKlawisze() {
+func (sok *systemObsługiKota) zarejestrujKlawisze() {
 	engo.Input.RegisterButton("lewo", engo.ArrowLeft)
 	engo.Input.RegisterButton("prawo", engo.ArrowRight)
 	engo.Input.RegisterButton("góra", engo.ArrowUp)
@@ -62,19 +62,19 @@ func (ks *kociSystem) zarejestrujKlawisze() {
 	engo.Input.RegisterButton("spacja", engo.Space)
 }
 
-func (ks *kociSystem) Update(dt float32) {
+func (sok *systemObsługiKota) Update(dt float32) {
 	lewo := engo.Input.Button("lewo")
 	prawo := engo.Input.Button("prawo")
 	spacja := engo.Input.Button("spacja")
 
-	staryX := ks.kot.SpaceComponent.Position.X
-	staryY := ks.kot.SpaceComponent.Position.Y
+	staryX := sok.kot.SpaceComponent.Position.X
+	staryY := sok.kot.SpaceComponent.Position.Y
 	nowyX := staryX
 	nowyY := staryY
 
-	ks.kot.stoi = false
-	nowyY += dt * (ks.kot.szybkośćY + (dt * przyspieszenieZiemskie / 2))
-	ks.kot.szybkośćY += dt * przyspieszenieZiemskie
+	sok.kot.stoi = false
+	nowyY += dt * (sok.kot.szybkośćY + (dt * przyspieszenieZiemskie / 2))
+	sok.kot.szybkośćY += dt * przyspieszenieZiemskie
 
 	if lewo.Down() && !prawo.Down() {
 		nowyX -= dt * 500
@@ -85,19 +85,19 @@ func (ks *kociSystem) Update(dt float32) {
 
 	if nowyY >= 670 && staryY <= 670 {
 		nowyY = 670
-		ks.kot.stoi = true
+		sok.kot.stoi = true
 	}
 
-	if spacja.Down() && ks.kot.stoi {
-		ks.kot.szybkośćY = -2500
+	if spacja.Down() && sok.kot.stoi {
+		sok.kot.szybkośćY = -2500
 	}
 
-	ks.kot.SpaceComponent.Position.X = nowyX
-	ks.kot.SpaceComponent.Position.Y = nowyY
+	sok.kot.SpaceComponent.Position.X = nowyX
+	sok.kot.SpaceComponent.Position.Y = nowyY
 }
 
-func (ks *kociSystem) Remove(usunięty ecs.BasicEntity) {
-	if usunięty == ks.kot.BasicEntity {
+func (sok *systemObsługiKota) Remove(usunięty ecs.BasicEntity) {
+	if usunięty == sok.kot.BasicEntity {
 		panic("Usunięto kota!")
 	}
 }
@@ -125,7 +125,7 @@ func (*kociaScena) Setup(świat *ecs.World) {
 
 	świat.AddSystem(&common.RenderSystem{})
 
-	świat.AddSystem(&kociSystem{})
+	świat.AddSystem(&systemObsługiKota{})
 }
 
 func main() {
